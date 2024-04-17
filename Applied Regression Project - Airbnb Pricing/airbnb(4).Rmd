@@ -1,0 +1,182 @@
+---
+title: "airbnb"
+author: "Chicane"
+date: "`r Sys.Date()`"
+output: word_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = T, eval=F, comment=NA, message=F, warning=F)
+library(dplyr)
+library(MASS)
+library(readr)
+```
+
+```{r}
+airbnb = read.csv('/Users/cosmoser/Desktop/airbnb.csv')
+head(airbnb)
+airbnb = airbnb %>% 
+  mutate(cancel_policy = as.factor(cancel_policy),
+         neighbourhood = as.factor(neighbourhood),
+         property_type = as.factor(property_type),
+         room_type = as.factor(room_type),
+         instant_bookable = as.factor(instant_bookable),
+         superhost = as.factor(superhost),
+         TV = as.factor(TV),
+         AC= as.factor(AC),
+         Parking = as.factor(Parking),
+         Checkin_24hour = as.factor(Checkin_24hour),
+         Pets_allowed = as.factor(Pets_allowed),
+         Gym = as.factor(Gym),
+         Pets_live = as.factor(Pets_live),
+         Kid_friendly = as.factor(Kid_friendly)
+)
+summary(airbnb)
+```
+**Findings:** The max of $min_nights$ is 1000, which is not reasonable and can be regarded as outlier.
+
+```{r}
+par(mfrow=c(2,4))
+Name=names(airbnb)
+##airbnb$minimum_nights[minimum_nights = 1000] = 0
+for(i in c(1:12)){
+  hist(airbnb[,i], main=Name[i], xlab=Name[i])
+  qqnorm(airbnb[,i], main=Name[i], xlab=Name[i])
+  qqline(airbnb[,i])}
+```
+**Findings:** All variables are in skewed distribution.
+```{r}
+par(mfrow=c(2,4))
+for (i in c(13:23, 26)){
+  boxplot(airbnb$price~airbnb[,i], main=Name[i], xlab=Name[i])
+}
+```
+```{r}
+boxplot(airbnb$price~airbnb$neighbourhood, main=Name[24], xlab=Name[24])
+boxplot(airbnb$price~airbnb$neighbourhood, main=Name[25], xlab=Name[25])
+```
+```{r}
+par(mfrow=c(2,2))
+for (i in c(2:12)) {
+  lmod0=lm(I(abs(airbnb[,i])+0.001)~1)
+  b=boxcox(lmod0,xlab=Name[i])
+}
+```
+**Findings:** We need to transform all variables except host_response_rate and discrete ones.
+
+```{r}
+par(mfrow=c(2,2))
+for (i in c(2:12)) {
+  plot(airbnb[ , i], airbnb$price, main=Name[i], xlab=Name[i], ylab="price")
+}
+```
+**Findings:** No predictors seem to have linear associations with the response variable $price$.
+
+```{r}
+lmod1 = lm(price~. ,data=airbnb)
+summary(lmod1)
+par(mfrow=c(2,2))
+plot(lmod1)
+boxcox(lmod1)
+```
+**Findings:** R-squared is 0.5386. Residual plot seems to appear close to random. QQplot is close to straightline. The leverage plot (bottom-right) shows to potential influential points (2485).
+
+```{r}
+lmod2=lm(I(price^(-1/5))~host_response+deposit+cleaning_fee+availability_90+review_num+review_score+guests_included+min_nights+bathrooms+bedrooms+beds+instant_bookable+TV+Parking+AC+Checkin_24hour+Pets_allowed+Gym+Pets_live+Kid_friendly+superhost+room_type+property_type+cancel_policy+neighbourhood,data=airbnb)
+summary(lmod2)
+par(mfrow=c(2,2))
+plot(lmod2)
+```
+**Findings:** 
+(1) The boxcox suggests a ^(-1/5)-transformation for the response variable $price$.
+(2) The new model with transformed response variable has an improved R-squared around $0.7011$, whose diagnostic plots all look better than the previous.
+
+```{r}
+Name=names(airbnb)
+par(mfrow=c(2,2))
+for (i in c(2:12)) {
+  plot(airbnb[ , i], (airbnb$price)^(-1/5), main=Name[i], xlab=Name[i], ylab="price^(-1/5)")
+}
+```
+**Findings:** The linear relationship is still not obvious.
+
+```{r}
+airbnb$log.deposit = log(airbnb$deposit+0.001)
+airbnb$t.cleaning_fee = airbnb$cleaning_fee^(0.2)
+airbnb$t.availability_90 = airbnb$availability_90^(0.4)
+airbnb$t.review_num = airbnb$review_num^(0.2)
+airbnb$t.review_score = airbnb$review_score^2
+Name = names(airbnb)
+par(mfrow=c(2,2))
+for (i in c(27:31)) {
+  plot(airbnb[,i],(airbnb$price)^(-1/5),main=Name[i],xlab=Name[i],ylab="price^(-1/5)")
+}
+```
+**Findings:** After transforming some continuous numerical variables, the relationship becomes more linear.
+
+```{r}
+lmod3 = lm(I((price)^(-1/5))~host_response+log.deposit+t.cleaning_fee+t.availability_90+t.review_num+t.review_score+guests_included+min_nights+bathrooms+bedrooms+beds+instant_bookable+TV+Parking+AC+Checkin_24hour+Pets_allowed+Gym+Pets_live+Kid_friendly+superhost+property_type+cancel_policy+room_type+neighbourhood, data=airbnb)
+summary(lmod3)
+par(mfrow=c(2,2))
+plot(lmod3)
+```
+```{r}
+studres=rstudent(lmod3)
+range(studres)
+out.idx = which(abs(studres)>3)
+out.idx
+length(out.idx)
+```
+**Findings:** There are 27 outliers in our data base.
+
+```{r}
+airbnb[c(out.idx),]
+summary(airbnb)
+```
+
+```{r}
+out.ind = c(out.idx,31)
+airbnb = airbnb[-out.ind,]
+airbnb[1055,]
+airbnb = airbnb[-1055,]
+lmod3.new = lm(I((price)^(-1/5))~host_response+log.deposit+t.cleaning_fee+t.availability_90+t.review_num+t.review_score+guests_included+min_nights+bathrooms+bedrooms+beds+instant_bookable+TV+Parking+AC+Checkin_24hour+Pets_allowed+Gym+Pets_live+Kid_friendly+superhost+property_type+cancel_policy+room_type+neighbourhood, data=airbnb)
+summary(lmod3.new)
+par(mfrow=c(2,2))
+plot(lmod3.new)
+```
+
+```{r}
+library(MASS)
+lmod.aic = stepAIC(lmod3.new,direction="both",k=2,trace = F)
+summary(lmod.aic)
+n=dim(airbnb)[1]
+lmod.bic = stepAIC(lmod3.new,direction="both",k=log(n),trace = F)
+summary(lmod.bic)
+AIC(lmod.aic)
+AIC(lmod.bic)
+BIC(lmod.aic)
+BIC(lmod.bic)
+```
+
+```{r}
+library(faraway)
+vif(lmod.bic)
+vif(lmod.aic)
+par(mfrow=c(2,2))
+plot(lmod.bic)
+```
+```{r}
+summary(lmod.bic)
+par(mfrow=c(2,2))
+lmod_bic_new = lm(formula = I((price)^(-1/5)) ~ host_response + t.cleaning_fee + 
+    t.availability_90 + t.review_score + guests_included + 
+    bathrooms + bedrooms + beds + instant_bookable + TV + 
+    Checkin_24hour + superhost + room_type + 
+    neighbourhood + I((t.availability_90)^2) + I((t.review_score)^2), data = airbnb)
+summary(lmod_bic_new)
+plot(lmod_bic_new)
+```
+
+
+
+
